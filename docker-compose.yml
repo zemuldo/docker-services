@@ -1,0 +1,104 @@
+version: '3.7'
+
+services:
+
+  mongo:
+    container_name: mongo
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - ${MONGOD_DATA_PATH:-/var/lib/mongodb}:/data/db
+
+    restart: always
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+    container_name: redis
+    networks:
+      - zemuldo_development
+
+  postgres:
+    image: postgres:11.5
+    restart: always
+    networks:
+      - zemuldo_development
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - PGDATA=/var/lib/postgresql/data
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+  # Elastic Search and Kibana
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.3.1
+    container_name: elasticsearch-dev
+    environment:
+      - node.name=elasticsearch-dev
+      - cluster.name=docker-cluster
+      - cluster.initial_master_nodes=elasticsearch-dev
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms256M -Xmx256M"
+      - http.cors.enabled=true
+      - http.cors.allow-origin=*
+      - network.host=_eth0_
+    ulimits:
+      nproc: 65535
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - type: volume
+        source: es-logs
+        target: /var/log
+      - type: volume
+        source: es-data
+        target: /usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.3.1
+    container_name: kibana
+    environment:
+      SERVER_NAME: localhost
+      ELASTICSEARCH_URL: http://elasticsearch-dev:9200/
+    ports:
+      - 5601:5601
+    depends_on:
+      - elasticsearch
+    volumes:
+      - type: volume
+        source: esl-logs
+        target: /var/log
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+      - "25672:25672"
+    hostname: rabbitmq
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=zemuldo
+      - RABBITMQ_DEFAULT_USER=rabbitmq
+      - RABBITMQ_DEFAULT_PASS=rabbitmq
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq:rw
+    networks:
+      - zemuldo_development
+
+volumes:
+  es-logs:
+  es-data:    
+  rabbitmq:
+  postgres:
+
+networks:
+  zemuldo_development:
+    driver: bridge
