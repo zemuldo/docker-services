@@ -2,13 +2,58 @@ version: '3.7'
 
 services:
 
+  dynamodb:
+    image: amazon/dynamodb-local
+    hostname: dynamodb-local
+    container_name: dynamodb-local
+    ports:
+      - "8042:8000"
+
+  yb-master:
+      image: yugabytedb/yugabyte:latest
+      container_name: yb-master-n1
+      volumes:
+      - yb-master-data-1:/mnt/master
+      command: [ "/home/yugabyte/bin/yb-master",
+                "--fs_data_dirs=/mnt/master",
+                "--master_addresses=yb-master-n1:7100",
+                "--rpc_bind_addresses=yb-master-n1:7100",
+                "--replication_factor=1"]
+      ports:
+      - "7000:7000"
+      environment:
+        SERVICE_7000_NAME: yb-master
+
+  yb-tserver:
+      image: yugabytedb/yugabyte:latest
+      container_name: yb-tserver-n1
+      volumes:
+      - yb-tserver-data-1:/mnt/tserver
+      command: [ "/home/yugabyte/bin/yb-tserver",
+                "--fs_data_dirs=/mnt/tserver",
+                "--start_pgsql_proxy",
+                "--rpc_bind_addresses=yb-tserver-n1:9100",
+                "--tserver_master_addrs=yb-master-n1:7100"]
+      ports:
+      - "9042:9042"
+      - "6380:6379"
+      - "5434:5433"
+      - "9000:9000"
+      environment:
+        SERVICE_5433_NAME: ysql
+        SERVICE_9042_NAME: ycql
+        SERVICE_6379_NAME: yedis
+        SERVICE_9000_NAME: yb-tserver
+      depends_on:
+      - yb-master
+
   mongo:
     container_name: mongo
     image: mongo:latest
     ports:
       - "27017:27017"
     volumes:
-      - ${MONGOD_DATA_PATH:-/var/lib/mongodb}:/data/db
+      - mongo-data:/data/db
 
     restart: always
 
@@ -34,10 +79,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres:/var/lib/postgresql/data
+
   # Elastic Search and Kibana
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.3.1
-    container_name: elasticsearch-dev
+    image: elasticsearch:7.3.1
+    container_name: elasticsearch
     environment:
       - node.name=elasticsearch-dev
       - cluster.name=docker-cluster
@@ -62,18 +108,18 @@ services:
     ports:
       - 9200:9200
   kibana:
-    image: docker.elastic.co/kibana/kibana:7.3.1
+    image: kibana:7.3.1
     container_name: kibana
     environment:
       SERVER_NAME: localhost
-      ELASTICSEARCH_URL: http://elasticsearch-dev:9200/
+      ELASTICSEARCH_URL: http://elasticsearch:9200/
     ports:
       - 5601:5601
     depends_on:
       - elasticsearch
     volumes:
       - type: volume
-        source: esl-logs
+        source: es-logs
         target: /var/log
   # RabbitMQ
   rabbitmq:
@@ -98,6 +144,9 @@ volumes:
   es-data:    
   rabbitmq:
   postgres:
+  mongo-data:
+  yb-master-data-1:
+  yb-tserver-data-1:
 
 networks:
   zemuldo_development:
